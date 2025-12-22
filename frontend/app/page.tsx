@@ -8,10 +8,13 @@ import { formatBps } from "./lib/format";
 
 // Minimal ABIs (adjust later to match your contracts)
 const VaultABI = [
-  "function currentRegime() view returns (uint8)",
-  "function tokenId() view returns (uint256)",
-  "function tickLower() view returns (int24)",
-  "function tickUpper() view returns (int24)",
+  "function activeRegime() view returns (uint8)",
+  "function normalRange() view returns (int24 tickLower, int24 tickUpper, bool enabled)",
+  "function mildRange() view returns (int24 tickLower, int24 tickUpper, bool enabled)",
+  "function severeRange() view returns (int24 tickLower, int24 tickUpper, bool enabled)",
+  "function normalPosition() view returns (uint256 tokenId, int24 tickLower, int24 tickUpper, bytes32 salt, bool active)",
+  "function supportPosition() view returns (uint256 tokenId, int24 tickLower, int24 tickUpper, bytes32 salt, bool active)",
+  "function balances() view returns (uint256 bal0, uint256 bal1)",
 ];
 
 const PoolABI = [
@@ -72,26 +75,30 @@ export default function Page() {
 
         // VAULT
         if (!isZeroAddress(ADDR.vault)) {
-          const vault = new Contract(ADDR.vault, VaultABI, provider);
-          const [r, id, lo, hi] = await Promise.all([
-            vault.currentRegime(),
-            vault.tokenId(),
-            vault.tickLower(),
-            vault.tickUpper(),
-          ]);
+        const vault = new Contract(ADDR.vault, VaultABI, provider);
 
-          if (!cancelled) {
-            setRegime(Number(r));
-            setTokenId(id.toString());
-            setTickLower(Number(lo));
-            setTickUpper(Number(hi));
-          }
-        } else if (!cancelled) {
-          setRegime(null);
-          setTokenId(null);
-          setTickLower(null);
-          setTickUpper(null);
+        const r = await vault.activeRegime();
+        const normalPos = await vault.normalPosition();
+        const supportPos = await vault.supportPosition();
+
+        // Prefer SUPPORT if active, otherwise NORMAL if active, otherwise show nothing
+        const usePos =
+          supportPos[4] === true ? supportPos :
+          normalPos[4] === true ? normalPos :
+          null;
+
+        if (!cancelled) {
+          setRegime(Number(r));
+          setTokenId(usePos ? usePos[0].toString() : null);
+          setTickLower(usePos ? Number(usePos[1]) : null);
+          setTickUpper(usePos ? Number(usePos[2]) : null);
         }
+      } else if (!cancelled) {
+        setRegime(null);
+        setTokenId(null);
+        setTickLower(null);
+        setTickUpper(null);
+      }
 
         // POOL
         if (!isZeroAddress(ADDR.pool)) {
