@@ -6,62 +6,77 @@ import {IERC20} from "forge-std/interfaces/IERC20.sol";
 
 import {IHooks} from "@uniswap/v4-core/src/interfaces/IHooks.sol";
 import {Currency} from "@uniswap/v4-core/src/types/Currency.sol";
-import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
-import {IPositionManager} from "@uniswap/v4-periphery/src/interfaces/IPositionManager.sol";
-import {IPermit2} from "permit2/src/interfaces/IPermit2.sol";
-
-import {IUniswapV4Router04} from "hookmate/interfaces/router/IUniswapV4Router04.sol";
-import {AddressConstants} from "hookmate/constants/AddressConstants.sol";
 
 import {Deployers} from "test/utils/Deployers.sol";
 
-/// @notice Shared configuration between scripts
+/// @notice Shared configuration between scripts (env-driven)
+/// Env vars expected:
+/// - TOKEN0 (address)
+/// - TOKEN1 (address)
+/// Optional:
+/// - HOOK_CONTRACT (address)  // set to 0x0 if none
 contract BaseScript is Script, Deployers {
     address immutable deployerAddress;
 
-    /////////////////////////////////////
-    // --- Configure These ---
-    /////////////////////////////////////
-    IERC20 internal constant token0 = IERC20(0x7E287bb62F87916c190b45BA0921F862Fb4b9Aa5);
-    IERC20 internal constant token1 = IERC20(0x72CC5BA2958CB688B00dFE2E578Db3BbB79eD311);
-    //IHooks constant hookContract = IHooks(address(0));
-    IHooks constant hookContract = IHooks(0xa2e71a2cB503d5a1ABdC0895e0AFfC511740E080);
-    /////////////////////////////////////
+    // Now configurable via env (not constants)
+    IERC20 internal token0;
+    IERC20 internal token1;
+    IHooks internal hookContract;
 
-    Currency immutable currency0;
-    Currency immutable currency1;
+    Currency internal currency0;
+    Currency internal currency1;
 
     constructor() {
-        // Make sure artifacts are available, either deploy or configure.
+        // Deploy or configure periphery artifacts (Permit2/PoolManager/PositionManager/Router)
         deployArtifacts();
 
         deployerAddress = getDeployer();
 
+        // Load addresses from env
+        token0 = IERC20(vm.envAddress("TOKEN0_ADDRESS"));
+        token1 = IERC20(vm.envAddress("TOKEN1_ADDRESS"));
+
+        // Hook is optional; if env var missing or set to 0, use address(0)
+        // If you prefer "required", replace with vm.envAddress("HOOK_CONTRACT")
+        address hookAddr = vm.envOr("HOOK_ADDRESS", address(0));
+        hookContract = IHooks(hookAddr);
+
         (currency0, currency1) = getCurrencies();
 
+        // Labels for readability in traces
         vm.label(address(permit2), "Permit2");
         vm.label(address(poolManager), "V4PoolManager");
         vm.label(address(positionManager), "V4PositionManager");
         vm.label(address(swapRouter), "V4SwapRouter");
 
-        vm.label(address(token0), "Currency0");
-        vm.label(address(token1), "Currency1");
-
+        vm.label(address(token0), "Token0");
+        vm.label(address(token1), "Token1");
         vm.label(address(hookContract), "HookContract");
     }
 
     function _etch(address target, bytes memory bytecode) internal override {
         if (block.chainid == 31337) {
-            vm.rpc("anvil_setCode", string.concat('["', vm.toString(target), '",', '"', vm.toString(bytecode), '"]'));
+            vm.rpc(
+                "anvil_setCode",
+                string.concat(
+                    '["',
+                    vm.toString(target),
+                    '",',
+                    '"',
+                    vm.toString(bytecode),
+                    '"]'
+                )
+            );
         } else {
             revert("Unsupported etch on this network");
         }
     }
 
-    function getCurrencies() internal pure returns (Currency, Currency) {
-        require(address(token0) != address(token1));
+    function getCurrencies() internal view returns (Currency, Currency) {
+        require(address(token0) != address(token1), "token0 == token1");
 
-        if (token0 < token1) {
+        // Sort by address to satisfy PoolKey ordering rules
+        if (address(token0) < address(token1)) {
             return (Currency.wrap(address(token0)), Currency.wrap(address(token1)));
         } else {
             return (Currency.wrap(address(token1)), Currency.wrap(address(token0)));
@@ -70,11 +85,7 @@ contract BaseScript is Script, Deployers {
 
     function getDeployer() internal returns (address) {
         address[] memory wallets = vm.getWallets();
-
-        if (wallets.length > 0) {
-            return wallets[0];
-        } else {
-            return msg.sender;
-        }
+        if (wallets.length > 0) return wallets[0];
+        return msg.sender;
     }
 }

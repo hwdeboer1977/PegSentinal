@@ -6,7 +6,7 @@ import "forge-std/console2.sol";
 
 // Anvil:
 // 1. set -a; source .env.anvil; set +a
-// 2. forge script script/05_check_liquidity.s.sol --rpc-url http://127.0.0.1:8545 --private-key 0xYOUR_PRIVATE_KEY --broadcast -vvvv --via-ir
+// 2. forge script script/Check_liquidity.s.sol --rpc-url http://127.0.0.1:8545 --private-key 0xYOUR_PRIVATE_KEY --broadcast -vvvv --via-ir
 
 
 import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";

@@ -15,7 +15,7 @@ import "forge-std/Script.sol";
 
 // Anvil:
 // 1. set -a; source .env.anvil; set +a
-// 2. forge script script/01_DeployHook.s.sol --rpc-url http://127.0.0.1:8545 --private-key 0xYOUR_PRIVATE_KEY --broadcast -vvvv --via-ir
+// 2. forge script script/01_DeployHook.s.sol --rpc-url http://127.0.0.1:8545 --broadcast -vvvv --via-ir
 
 // This code follows https://github.com/uniswapfoundation/v4-template
 
@@ -33,13 +33,15 @@ contract DeployHookScript is BaseScript {
             Hooks.BEFORE_SWAP_FLAG
         );
 
-        // Use token0 and token1 from BaseScript
         bytes memory constructorArgs = abi.encode(poolManager, address(token0), address(token1));
         (address hookAddress, bytes32 salt) =
             HookMiner.find(CREATE2_FACTORY, flags, type(PegSentinelHook).creationCode, constructorArgs);
 
-        vm.startBroadcast();
+        uint256 pk = uint256(vm.envBytes32("PRIVATE_KEY"));
+        vm.startBroadcast(pk);
+
         PegSentinelHook hook = new PegSentinelHook{salt: salt}(poolManager, address(token0), address(token1));
+
         vm.stopBroadcast();
 
         console.log("Hook address: ", hookAddress);
