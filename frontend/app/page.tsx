@@ -32,6 +32,9 @@ const HookABI = [
 const ERC20ABI = [
   "function symbol() view returns (string)",
   "function decimals() view returns (uint8)",
+  "function balanceOf(address owner) view returns (uint256)",
+  "function allowance(address owner, address spender) view returns (uint256)",
+  "function approve(address spender, uint256 amount) returns (bool)",
 ];
 
 // Uniswap V4 PositionManager ABI (from docs)
@@ -44,6 +47,21 @@ const PositionManagerABI = [
 // PoolManager ABI for getting current price
 const PoolManagerABI = [
   "function getSlot0(bytes32 poolId) view returns (uint160 sqrtPriceX96, int24 tick, uint24 protocolFee, uint24 lpFee)",
+];
+
+// StateView ABI (v4-periphery lens contract for offchain reads)
+const StateViewABI = [
+  "function getSlot0(bytes32 poolId) view returns (uint160 sqrtPriceX96, int24 tick, uint24 protocolFee, uint24 lpFee)",
+];
+
+// PoolSwapTest ABI (for testing swaps on V4)
+const PoolSwapTestABI = [
+  "function swap((address currency0, address currency1, uint24 fee, int24 tickSpacing, address hooks) key, (bool zeroForOne, int256 amountSpecified, uint160 sqrtPriceLimitX96) params, (bool takeClaims, bool settleUsingBurn) testSettings, bytes hookData) payable returns (int256 delta)",
+];
+
+// Custom SwapRouter ABI (your deployed router)
+const SwapRouterABI = [
+  "function swapExactTokensForTokens(uint256 amountIn, uint256 amountOutMin, bool zeroForOne, (address currency0, address currency1, uint24 fee, int24 tickSpacing, address hooks) poolKey, bytes hookData, address receiver, uint256 deadline) returns (uint256 amountOut)",
 ];
 
 // Helper to decode packed position info from V4
@@ -472,18 +490,48 @@ export default function Page() {
   // LP Position from PositionManager
   const [lpPosition, setLpPosition] = useState<LPPositionDetails | null>(null);
 
+  // Swap state
+  const [swapDirection, setSwapDirection] = useState<"0to1" | "1to0">("0to1");
+  const [swapAmount, setSwapAmount] = useState("");
+  const [swapLoading, setSwapLoading] = useState(false);
+  const [swapTxHash, setSwapTxHash] = useState<string | null>(null);
+  const [walletConnected, setWalletConnected] = useState(false);
+  const [walletAddress, setWalletAddress] = useState<string | null>(null);
+  const [token0Address, setToken0Address] = useState<string | null>(null);
+  const [token1Address, setToken1Address] = useState<string | null>(null);
+
+  // Pool state from StateView
+  const [currentTick, setCurrentTick] = useState(0);
+  const [sqrtPriceX96, setSqrtPriceX96] = useState<string>("79228162514264337593543950336"); // Default tick 0
+
   // Derived values
   const { regime: regimeName, status: regimeStatus } = useMemo(() => regimeFromNumber(regime), [regime]);
 
-  // Current tick is 0 when at peg (simplified - we're assuming peg = tick 0)
-  const currentTick = 0;
-  const currentPrice = 1.0;
-  const deviationBps = 0;
+  // Calculate current price and deviation from tick
+  const currentPrice = useMemo(() => tickToPrice(currentTick), [currentTick]);
+  const deviationBps = useMemo(() => Math.round((currentPrice - 1.0) * 10000), [currentPrice]);
 
   // Load data
   const loadData = useCallback(async () => {
     try {
       const provider = getProvider();
+
+      // Load pool state from StateView (tick, price)
+      if (!isZeroAddress(ADDR.stateView) && ADDR.poolId !== "0x0000000000000000000000000000000000000000000000000000000000000000") {
+        try {
+          const stateView = new Contract(ADDR.stateView, StateViewABI, provider);
+          const slot0 = await stateView.getSlot0(ADDR.poolId);
+          const tick = Number(slot0.tick);
+          const sqrtPrice = slot0.sqrtPriceX96.toString();
+          
+          setCurrentTick(tick);
+          setSqrtPriceX96(sqrtPrice);
+          
+          console.log("Pool state from StateView:", { tick, sqrtPriceX96: sqrtPrice });
+        } catch (e) {
+          console.warn("Could not load pool state from StateView:", e);
+        }
+      }
 
       // Load vault data
       if (!isZeroAddress(ADDR.vault)) {
@@ -549,17 +597,36 @@ export default function Page() {
             let amount0 = 0n;
             let amount1 = 0n;
             
-            // Calculate token amounts using sqrtPriceX96
-            // For tick 0, sqrtPriceX96 = 2^96 = 79228162514264337593543950336
-            // This is the value from your Foundry script
+            // Get sqrtPriceX96 and tick from StateView (Uniswap V4 lens contract)
             try {
-              const sqrtPriceX96 = 79228162514264337593543950336n; // tick 0 = price 1.0
+              let sqrtPrice = BigInt("79228162514264337593543950336"); // Default: tick 0 = price 1.0
+              let tick = 0;
+              
+              // Try to read from StateView if poolId is configured
+              if (!isZeroAddress(ADDR.stateView) && ADDR.poolId !== "0x0000000000000000000000000000000000000000000000000000000000000000") {
+                try {
+                  const stateView = new Contract(ADDR.stateView, StateViewABI, provider);
+                  const slot0 = await stateView.getSlot0(ADDR.poolId);
+                  sqrtPrice = BigInt(slot0.sqrtPriceX96.toString());
+                  tick = Number(slot0.tick);
+                  console.log("StateView slot0:", {
+                    sqrtPriceX96: sqrtPrice.toString(),
+                    tick: tick,
+                  });
+                  
+                  // Update global state
+                  setCurrentTick(tick);
+                  setSqrtPriceX96(sqrtPrice.toString());
+                } catch (e) {
+                  console.warn("Could not read from StateView, using default sqrtPriceX96:", e);
+                }
+              }
               
               // Calculate amounts
               const sqrtPriceAX96 = getSqrtPriceAtTick(decoded.tickLower);
               const sqrtPriceBX96 = getSqrtPriceAtTick(decoded.tickUpper);
               const amounts = getAmountsForLiquidity(
-                sqrtPriceX96,
+                sqrtPrice,
                 sqrtPriceAX96,
                 sqrtPriceBX96,
                 BigInt(liquidity.toString())
@@ -628,6 +695,8 @@ export default function Page() {
         setSymbol1(sym1);
         setDecimals0(Number(dec0));
         setDecimals1(Number(dec1));
+        setToken0Address(t0Addr);
+        setToken1Address(t1Addr);
 
         // Build pool key for previewFee (order must match Uniswap V4 PoolKey struct)
         const poolKey = {
@@ -674,6 +743,146 @@ export default function Page() {
     const interval = setInterval(loadData, 15000);
     return () => clearInterval(interval);
   }, [loadData]);
+
+  // Check if wallet is connected on mount
+  useEffect(() => {
+    const checkWallet = async () => {
+      if (typeof window !== "undefined" && (window as any).ethereum) {
+        try {
+          const accounts = await (window as any).ethereum.request({ method: "eth_accounts" });
+          if (accounts.length > 0) {
+            setWalletConnected(true);
+            setWalletAddress(accounts[0]);
+          }
+        } catch (e) {
+          console.warn("Could not check wallet:", e);
+        }
+      }
+    };
+    checkWallet();
+  }, []);
+
+  // Connect wallet
+  const connectWallet = async () => {
+    if (typeof window !== "undefined" && (window as any).ethereum) {
+      try {
+        const accounts = await (window as any).ethereum.request({ method: "eth_requestAccounts" });
+        if (accounts.length > 0) {
+          setWalletConnected(true);
+          setWalletAddress(accounts[0]);
+        }
+      } catch (e) {
+        console.error("Could not connect wallet:", e);
+      }
+    } else {
+      alert("Please install MetaMask!");
+    }
+  };
+
+  // Execute swap
+  const executeSwap = async () => {
+    if (!walletConnected || !token0Address || !token1Address) {
+      alert("Please connect wallet first");
+      return;
+    }
+
+    if (!swapAmount || parseFloat(swapAmount) <= 0) {
+      alert("Please enter a valid amount");
+      return;
+    }
+
+    setSwapLoading(true);
+    setSwapTxHash(null);
+
+    try {
+      const { BrowserProvider, Contract: EthersContract, parseUnits } = await import("ethers");
+      const provider = new BrowserProvider((window as any).ethereum);
+      const signer = await provider.getSigner();
+      const signerAddress = await signer.getAddress();
+
+      const inputToken = swapDirection === "0to1" ? token0Address : token1Address;
+      const inputDecimals = swapDirection === "0to1" ? decimals0 : decimals1;
+      const amountIn = parseUnits(swapAmount, inputDecimals);
+
+      console.log("Swap details:", {
+        inputToken,
+        inputDecimals,
+        amountIn: amountIn.toString(),
+        signerAddress,
+        swapRouter: ADDR.swapRouter,
+      });
+
+      // First approve tokens to SwapRouter
+      const tokenContract = new EthersContract(inputToken, ERC20ABI, signer);
+      
+      // Try to check allowance, but if it fails just approve anyway
+      let needsApproval = true;
+      try {
+        const allowance = await tokenContract.allowance(signerAddress, ADDR.swapRouter);
+        console.log("Current allowance:", allowance.toString());
+        needsApproval = allowance < amountIn;
+      } catch (e) {
+        console.warn("Could not check allowance, will approve anyway:", e);
+      }
+      
+      if (needsApproval) {
+        console.log("Approving tokens...");
+        const approveTx = await tokenContract.approve(ADDR.swapRouter, amountIn * BigInt(2));
+        await approveTx.wait();
+        console.log("Approval confirmed");
+      }
+
+      // Build pool key (must match your pool exactly)
+      const poolKey = {
+        currency0: token0Address,
+        currency1: token1Address,
+        fee: 0x800000, // DYNAMIC_FEE_FLAG
+        tickSpacing: 60,
+        hooks: ADDR.hook,
+      };
+
+      const zeroForOne = swapDirection === "0to1";
+      const hookData = "0x";
+      const deadline = Math.floor(Date.now() / 1000) + 300; // 5 minutes
+
+      // Execute swap using your custom router
+      const router = new EthersContract(ADDR.swapRouter, SwapRouterABI, signer);
+      console.log("Executing swap...", { 
+        amountIn: amountIn.toString(), 
+        zeroForOne, 
+        poolKey,
+        hookAddress: ADDR.hook,
+        receiver: signerAddress,
+        deadline 
+      });
+      
+      const tx = await router.swapExactTokensForTokens(
+        amountIn,
+        0, // amountOutMin - allowing unlimited slippage for testing
+        zeroForOne,
+        poolKey,
+        hookData,
+        signerAddress, // receiver
+        deadline,
+        { gasLimit: 500000 } // Manual gas limit to bypass estimateGas
+      );
+      
+      console.log("Swap tx:", tx.hash);
+      setSwapTxHash(tx.hash);
+      
+      await tx.wait();
+      console.log("Swap confirmed!");
+      
+      // Reload data
+      setSwapAmount("");
+      loadData();
+    } catch (e: any) {
+      console.error("Swap error:", e);
+      alert(`Swap failed: ${e?.message || e}`);
+    } finally {
+      setSwapLoading(false);
+    }
+  };
 
   return (
     <main className="min-h-screen bg-gray-50 text-gray-900">
@@ -877,6 +1086,120 @@ export default function Page() {
                   : "No LP position configured. Set position in vault first."}
               </div>
             )}
+          </Card>
+        </div>
+
+        {/* Swap Test Card */}
+        <div className="mt-6">
+          <Card title="Test Swap" accent="text-blue-600">
+            <div className="space-y-4">
+              {/* Wallet Connection */}
+              {!walletConnected ? (
+                <button
+                  onClick={connectWallet}
+                  className="w-full py-3 px-4 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700 transition-colors"
+                >
+                  Connect Wallet
+                </button>
+              ) : (
+                <div className="text-sm text-gray-500">
+                  Connected: {walletAddress?.slice(0, 6)}...{walletAddress?.slice(-4)}
+                </div>
+              )}
+
+              {walletConnected && (
+                <>
+                  {/* Direction Toggle */}
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => setSwapDirection("0to1")}
+                      className={`flex-1 py-2 px-4 rounded-lg font-medium transition-colors ${
+                        swapDirection === "0to1"
+                          ? "bg-blue-600 text-white"
+                          : "bg-gray-100 text-gray-600 hover:bg-gray-200"
+                      }`}
+                    >
+                      {symbol0} → {symbol1}
+                    </button>
+                    <button
+                      onClick={() => setSwapDirection("1to0")}
+                      className={`flex-1 py-2 px-4 rounded-lg font-medium transition-colors ${
+                        swapDirection === "1to0"
+                          ? "bg-blue-600 text-white"
+                          : "bg-gray-100 text-gray-600 hover:bg-gray-200"
+                      }`}
+                    >
+                      {symbol1} → {symbol0}
+                    </button>
+                  </div>
+
+                  {/* Amount Input */}
+                  <div>
+                    <label className="block text-sm text-gray-500 mb-1">
+                      Amount ({swapDirection === "0to1" ? symbol0 : symbol1})
+                    </label>
+                    <input
+                      type="number"
+                      value={swapAmount}
+                      onChange={(e) => setSwapAmount(e.target.value)}
+                      placeholder="0.0"
+                      className="w-full px-4 py-3 border border-gray-200 rounded-lg text-lg font-mono focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    />
+                  </div>
+
+                  {/* Fee Preview */}
+                  <div className="bg-gray-50 rounded-lg p-3 border border-gray-100">
+                    <div className="flex justify-between text-sm">
+                      <span className="text-gray-500">Expected Fee</span>
+                      <span className="font-medium text-gray-700">
+                        {swapDirection === "0to1" 
+                          ? (fee0to1 ? formatFee(fee0to1.fee) : "—")
+                          : (fee1to0 ? formatFee(fee1to0.fee) : "—")}
+                      </span>
+                    </div>
+                    <div className="flex justify-between text-sm mt-1">
+                      <span className="text-gray-500">Direction</span>
+                      <span className={`font-medium ${
+                        (swapDirection === "0to1" ? fee0to1?.toward : fee1to0?.toward)
+                          ? "text-emerald-600"
+                          : "text-amber-600"
+                      }`}>
+                        {(swapDirection === "0to1" ? fee0to1?.toward : fee1to0?.toward)
+                          ? "TOWARD PEG"
+                          : "AWAY FROM PEG"}
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Swap Button */}
+                  <button
+                    onClick={executeSwap}
+                    disabled={swapLoading || !swapAmount}
+                    className={`w-full py-3 px-4 rounded-lg font-medium transition-colors ${
+                      swapLoading || !swapAmount
+                        ? "bg-gray-200 text-gray-400 cursor-not-allowed"
+                        : "bg-blue-600 text-white hover:bg-blue-700"
+                    }`}
+                  >
+                    {swapLoading ? "Swapping..." : "Execute Swap"}
+                  </button>
+
+                  {/* Tx Hash */}
+                  {swapTxHash && (
+                    <div className="text-sm text-center">
+                      <a
+                        href={`https://sepolia.arbiscan.io/tx/${swapTxHash}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-blue-600 hover:underline"
+                      >
+                        View on Arbiscan →
+                      </a>
+                    </div>
+                  )}
+                </>
+              )}
+            </div>
           </Card>
         </div>
 

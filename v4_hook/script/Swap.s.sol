@@ -2,10 +2,13 @@
 pragma solidity ^0.8.26;
 
 
-// forge script script/04_Swap.s.sol --rpc-url arbitrum_sepolia --private-key 0xYOUR_PRIVATE_KEY --broadcast
+// Run on Sepolia Arbitrum:
+// 1. set -a; source .env; set +a
+// 2. forge script script/Swap.s.sol --rpc-url $ARB_RPC --private-key 0xYOUR_PRIVATE_KEY --broadcast -vv --via-ir
+
 
 // 1. set -a; source .env.anvil; set +a
-// 2. forge script script/04_Swap.s.sol --rpc-url http://127.0.0.1:8545 --private-key 0xYOUR_PRIVATE_KEY --broadcast -vvvv --via-ir
+// 2. forge script script/Swap.s.sol --rpc-url http://127.0.0.1:8545 --private-key 0xYOUR_PRIVATE_KEY --broadcast -vvvv --via-ir
 
 
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
