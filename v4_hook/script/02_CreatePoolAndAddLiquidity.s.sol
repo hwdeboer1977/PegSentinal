@@ -12,7 +12,10 @@ import {console2} from "forge-std/console2.sol";
 import {IERC20} from "forge-std/interfaces/IERC20.sol";
 import "forge-std/Script.sol";
 
-// forge script script/02_CreatePoolAndAddLiquidity.s.sol --rpc-url arbitrum_sepolia --private-key 0xYOUR_PRIVATE_KEY --broadcast -vvvv --via-ir
+
+// Run on Sepolia Arbitrum:
+// 1. set -a; source .env; set +a
+// 2. forge script script/02_CreatePoolAndAddLiquidity.s.sol --rpc-url $ARB_RPC --broadcast -vv --via-ir
 
 // Anvil
 // 1. set -a; source .env.anvil; set +a

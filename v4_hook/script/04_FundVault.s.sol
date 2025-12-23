@@ -7,10 +7,15 @@ import "forge-std/console2.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {PegSentinelVault} from "../src/PegSentinelVault.sol";
 
-// 1. set -a 
-// 2. source .env.anvil 
-// 3. set +a
-// 4. forge script script/04_FundVault.s.sol:FundVault --rpc-url $RPC_URL --broadcast -vv --via-ir
+
+
+// Run on Sepolia Arbitrum:
+// 1. set -a; source .env; set +a
+// 2. forge script script/04_FundVault.s.sol:FundVault --rpc-url $ARB_RPC --broadcast -vv --via-ir
+
+// Run on Anvil
+// 1. set -a; source .env.anvil; set +a
+// 2. forge script script/04_FundVault.s.sol:FundVault --rpc-url $RPC_URL --broadcast -vv --via-ir
 
 
 /// @notice Fund PegSentinelVault with token0/token1 from protocol treasury

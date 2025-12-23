@@ -19,6 +19,12 @@ import {LiquidityHelpers} from "./base/LiquidityHelpers.sol";
 
 import {PegSentinelVault} from "../src/PegSentinelVault.sol";
 
+
+// Run on Sepolia Arbitrum:
+// 1. set -a; source .env; set +a
+// 2. forge script script/05_MintPositionToVault.s.sol:MintPositionToVault --rpc-url $ARB_RPC --broadcast -vv --via-ir
+
+// On Anvil
 // 1. set -a; source .env.anvil; set +a;
 // 2. forge script script/05_MintPositionToVault.s.sol:MintPositionToVault --rpc-url $RPC_URL --broadcast -vvvv --via-ir
 

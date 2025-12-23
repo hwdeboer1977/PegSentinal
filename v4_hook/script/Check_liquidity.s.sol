@@ -4,6 +4,13 @@ pragma solidity ^0.8.26;
 import "forge-std/Script.sol";
 import "forge-std/console2.sol";
 
+
+// Sepolia:
+// 1. set -a; source .env; set +a
+// 2. forge script script/Check_liquidity.s.sol --rpc-url $ARB_RPC --broadcast -vvvv --via-ir
+
+
+
 // Anvil:
 // 1. set -a; source .env.anvil; set +a
 // 2. forge script script/Check_liquidity.s.sol --rpc-url http://127.0.0.1:8545 --private-key 0xYOUR_PRIVATE_KEY --broadcast -vvvv --via-ir
@@ -27,9 +34,9 @@ contract CheckLiquidityScript is BaseScript {
 
     function run() external view {
         // ---- HARD CODE ----
-        uint256 tokenId = 184;
-        int24 tickLower = -45000;
-        int24 tickUpper =  45000;
+        uint256 tokenId = 185;
+        int24 tickLower = -240;
+        int24 tickUpper =  240;
         bytes32 salt = bytes32(tokenId);
         // -------------------
 

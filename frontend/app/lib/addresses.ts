@@ -1,8 +1,22 @@
+// Contract addresses - update these after deployment
 export const ADDR = {
-  vault: (process.env.NEXT_PUBLIC_VAULT_ADDRESS || "").toLowerCase(),
-  pool: (process.env.NEXT_PUBLIC_POOL_ADDRESS || "").toLowerCase(),
-};
+  // Core contracts
+  vault: process.env.NEXT_PUBLIC_VAULT_ADDRESS || "0x0000000000000000000000000000000000000000",
+  hook: process.env.NEXT_PUBLIC_HOOK_ADDRESS || "0x0000000000000000000000000000000000000000",
+  
+  // Uniswap V4 PositionManager and PoolManager
+  positionManager: process.env.NEXT_PUBLIC_POSITION_MANAGER_ADDRESS || "0x0000000000000000000000000000000000000000",
+  poolManager: process.env.NEXT_PUBLIC_POOL_MANAGER_ADDRESS || "0x0000000000000000000000000000000000000000",
 
-export function isZeroAddress(a: string) {
-  return !a || a === "0x0000000000000000000000000000000000000000";
+  // Tokens (optional - hook has these)
+  token0: process.env.NEXT_PUBLIC_TOKEN0_ADDRESS || "0x0000000000000000000000000000000000000000",
+  token1: process.env.NEXT_PUBLIC_TOKEN1_ADDRESS || "0x0000000000000000000000000000000000000000",
+} as const;
+
+export function isZeroAddress(addr: string): boolean {
+  return (
+    !addr ||
+    addr === "0x0000000000000000000000000000000000000000" ||
+    addr === "0x0000000000000000000000000000000000000000000000000000000000000000"
+  );
 }

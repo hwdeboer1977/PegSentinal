@@ -9,8 +9,10 @@ import {PegSentinelHook} from "../src/PegSentinelHook.sol";
 
 import "forge-std/Script.sol";
 
-// Testnet
-// forge script script/01_DeployHook.s.sol  --rpc-url arbitrum_sepolia --private-key 0xYOUR_PRIVATE_KEY --broadcast
+
+// Run on Sepolia Arbitrum:
+// 1. set -a; source .env; set +a
+// 2. forge script script/01_DeployHook.s.sol --rpc-url $ARB_RPC --broadcast -vv --via-ir
 
 
 // Anvil:
